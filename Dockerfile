@@ -20,6 +20,8 @@ RUN ffprobe -version
 RUN yt-dlp --version
 RUN bun --version
 
+RUN mkdir -p /app/downloads
+
 COPY bun.lock package.json ./
 RUN bun install
 

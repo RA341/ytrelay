@@ -7,7 +7,7 @@
     "start": "bun run src/index.ts",
     "dev": "bun run --hot src/index.ts",
     "dk": "docker build . -t ytrelay:dev",
-    "dk:rn": "bun run dk && docker run -p 3002:3000 ytrelay:dev"
+    "dk:rn": "bun run dk && docker run --rm -p 3002:3000 ytrelay:dev"
   },
   "dependencies": {
     "hono": "^4.11.9",

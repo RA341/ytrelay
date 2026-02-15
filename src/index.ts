@@ -136,4 +136,9 @@ app.get('/download', async (c) => {
     }
 });
 
-export default app;
+Bun.serve({
+    fetch: app.fetch,
+    // 0 = disabled since downloads are long running
+    idleTimeout: 0,
+    port: 3000,
+});
