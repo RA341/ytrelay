@@ -1,77 +1,139 @@
-import { Hono } from 'hono';
-import { exec } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import {Hono} from 'hono';
+import {spawn} from 'node:child_process'; // Changed from exec to spawn
+import {promises as fs} from 'node:fs';
 import * as path from 'node:path';
-import { authMiddleware } from './middleware';
+import {authMiddleware} from './middleware';
+import {logger} from './logger'; // Import the logger
+import {initCache, getCachedFile, addFileToCache} from './cache'; // Import cache utilities
 
 const app = new Hono();
+
+initCache();
 
 app.use('*', authMiddleware);
 
 app.get('/', (c) => {
-  return c.text('Hello Hono!');
+    logger.info('Root endpoint hit.');
+    return c.text('Hello Hono!');
 });
 
 app.get('/download', async (c) => {
-  const videoUrl = c.req.query('url');
+    const videoUrl = c.req.query('url');
+    logger.info('Download endpoint hit', {videoUrl});
 
-  if (!videoUrl) {
-    return c.json({ error: 'Missing video URL' }, 400);
-  }
-
-  const downloadDir = path.join(process.cwd(), 'downloads');
-  const uniqueId = Date.now().toString(); // Simple unique ID
-  const outputTemplate = path.join(downloadDir, `${uniqueId}.%(ext)s`);
-
-  try {
-    await fs.mkdir(downloadDir, { recursive: true });
-
-    const command = `yt-dlp -o "${outputTemplate}" --restrict-filenames --format best "${videoUrl}"`;
-    await new Promise<void>((resolve, reject) => {
-      exec(command, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`exec error: ${error}`);
-          return reject(error);
-        }
-        console.log(`stdout: ${stdout}`);
-        console.error(`stderr: ${stderr}`);
-        resolve();
-      });
-    });
-
-    // Find the downloaded file
-    const filesInDownloadDir = await fs.readdir(downloadDir);
-    const downloadedFile = filesInDownloadDir.find(file => file.startsWith(uniqueId));
-
-    if (!downloadedFile) {
-      return c.json({ error: 'Failed to find downloaded file' }, 500);
+    if (!videoUrl) {
+        logger.warn('Missing video URL in download request', {ip: c.req.url});
+        return c.json({error: 'Missing video URL'}, 400);
     }
 
-    const filePath = path.join(downloadDir, downloadedFile);
-    const fileContent = await fs.readFile(filePath);
+    let filePath: string | undefined; // Declare filePath here to be accessible in finally block
+    let downloadedFileName: string | undefined; // Store the actual filename for headers and cache
 
-    // Set appropriate headers for file download
-    c.header('Content-Disposition', `attachment; filename="${downloadedFile}"`);
-    c.header('Content-Type', 'application/octet-stream'); // Generic binary file type
+    try {
+        const cachedEntry = getCachedFile(videoUrl);
+        if (cachedEntry) {
+            filePath = cachedEntry.filePath;
+            downloadedFileName = cachedEntry.originalFileName;
+            logger.info('Serving video from cache', {videoUrl, filePath});
 
-    const response = c.body(fileContent);
+            const fileContent = await fs.readFile(filePath);
+            c.header('Content-Disposition', `attachment; filename="${downloadedFileName}"`);
+            c.header('Content-Type', 'application/octet-stream');
+            return c.body(fileContent);
+        }
 
-    // Defer cleanup to allow the response to be fully sent
-    setTimeout(async () => {
-      try {
-        await fs.unlink(filePath);
-        console.log(`Cleaned up: ${filePath}`);
-      } catch (cleanupError) {
-        console.error(`Error cleaning up file ${filePath}: ${cleanupError}`);
-      }
-    }, 0);
+        const downloadDir = path.join(process.cwd(), 'downloads'); // Temporary download location
+        const uniqueId = Date.now().toString();
+        const outputTemplate = path.join(downloadDir, `${uniqueId}.%(ext)s`);
 
-    return response;
+        logger.info('Ensuring download directory exists', {downloadDir});
+        await fs.mkdir(downloadDir, {recursive: true});
 
-  } catch (error) {
-    console.error('Download or file serving error:', error);
-    return c.json({ error: 'Failed to download or serve video' }, 500);
-  }
+        const commandString = `yt-dlp -o "${outputTemplate}" "${videoUrl}"`;
+        logger.info('Executing yt-dlp command', {commandString});
+
+        // Split the command string into command and arguments for spawn
+        const parts = commandString.split(' ');
+        const commandName = parts[0];
+        const args = parts.slice(1).map(arg => {
+            // Remove surrounding quotes if present
+            if (arg.startsWith('"') && arg.endsWith('"')) {
+                return arg.slice(1, -1);
+            }
+            return arg;
+        });
+
+        await new Promise<void>((resolve, reject) => {
+            const child = spawn(commandName, args);
+
+            child.stdout.on('data', (data) => {
+                logger.info(`yt-dlp stdout: ${data.toString().trim()}`);
+            });
+
+            child.stderr.on('data', (data) => {
+                logger.warn(`yt-dlp stderr: ${data.toString().trim()}`);
+            });
+
+            child.on('close', (code) => {
+                if (code !== 0) {
+                    const error = new Error(`yt-dlp process exited with code ${code}`);
+                    logger.error(`yt-dlp process failed`, error, {code, commandString});
+                    return reject(error);
+                }
+                logger.info('yt-dlp command executed successfully');
+                resolve();
+            });
+
+            child.on('error', (err) => {
+                logger.error(`Failed to start yt-dlp process`, err, {commandName, args});
+                reject(err);
+            });
+        });
+
+        // Find the newly downloaded file in the temporary directory
+        const filesInDownloadDir = await fs.readdir(downloadDir);
+        const tempDownloadedFile = filesInDownloadDir.find(file => file.startsWith(uniqueId));
+
+        if (!tempDownloadedFile) {
+            logger.error('Failed to find temporary downloaded file after yt-dlp', undefined, {uniqueId, downloadDir});
+            return c.json({error: 'Failed to find downloaded file'}, 500);
+        }
+
+        const tempFilePath = path.join(downloadDir, tempDownloadedFile);
+        logger.info('Temporary downloaded file found', {tempFilePath});
+
+        // --- Add to cache and serve ---
+        const addedToCacheEntry = await addFileToCache(videoUrl, tempFilePath, tempDownloadedFile);
+        filePath = addedToCacheEntry.filePath; // Now filePath points to the cached version
+        downloadedFileName = addedToCacheEntry.originalFileName;
+
+        const fileContent = await fs.readFile(filePath);
+        logger.info('File content read, preparing to serve from cache after download', {
+            filePath,
+            fileSize: fileContent.length
+        });
+
+        c.header('Content-Disposition', `attachment; filename="${downloadedFileName}"`);
+        c.header('Content-Type', 'application/octet-stream');
+
+        // Clean up the temporary download directory after moving the file to cache
+        // Assuming downloadDir is intended only for temporary storage per request
+        setTimeout(async () => {
+            try {
+                await fs.rm(downloadDir, {recursive: true, force: true});
+                logger.info(`Cleaned up temporary download directory: ${downloadDir}`);
+            } catch (cleanupError) {
+                logger.error(`Error cleaning up temporary download directory ${downloadDir}`, cleanupError as Error);
+            }
+        }, 0);
+
+
+        return c.body(fileContent);
+
+    } catch (error) {
+        logger.error('Download or file serving error', error as Error, {videoUrl});
+        return c.json({error: 'Failed to download or serve video'}, 500);
+    }
 });
 
 export default app;
