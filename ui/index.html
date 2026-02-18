@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YtRelay</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0a0a0a;
+            --surface: #111;
+            --border: #222;
+            --accent: #e8ff00;
+            --text: #f0f0f0;
+            --muted: #555;
+            --red: #ff3b3b;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Space Mono', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 60px 20px 40px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 48px;
+            animation: fadeDown 0.5s ease both;
+        }
+
+        header h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(56px, 10vw, 96px);
+            letter-spacing: 6px;
+            line-height: 1;
+            color: var(--accent);
+            text-shadow: 4px 4px 0 #000, 0 0 40px rgba(232,255,0,0.2);
+        }
+
+        header p {
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+
+        .input-zone {
+            width: 100%;
+            max-width: 640px;
+            animation: fadeDown 0.5s 0.1s ease both;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            transition: border-color 0.2s;
+        }
+
+        .input-row:focus-within {
+            border-color: var(--accent);
+        }
+
+        .input-row input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 14px 18px;
+            color: var(--text);
+            font-family: 'Space Mono', monospace;
+            font-size: 13px;
+        }
+
+        .input-row input::placeholder { color: var(--muted); }
+
+        .input-row button {
+            background: var(--accent);
+            border: none;
+            color: #000;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 18px;
+            letter-spacing: 2px;
+            padding: 0 28px;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            flex-shrink: 0;
+        }
+
+        .input-row button:hover { background: #fff; }
+        .input-row button:active { transform: scale(0.97); }
+        .input-row button:disabled { background: var(--muted); cursor: not-allowed; }
+
+        .status {
+            margin-top: 14px;
+            font-size: 11px;
+            letter-spacing: 1px;
+            min-height: 18px;
+            color: var(--muted);
+        }
+
+        .status.loading { color: var(--accent); }
+        .status.error { color: var(--red); }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .media-zone {
+            width: 100%;
+            max-width: 640px;
+            margin-top: 36px;
+            animation: fadeUp 0.4s ease both;
+        }
+
+        .media-label {
+            font-size: 10px;
+            letter-spacing: 3px;
+            color: var(--muted);
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            padding-left: 2px;
+        }
+
+        .media-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .media-box video,
+        .media-box audio {
+            width: 100%;
+            display: block;
+            outline: none;
+        }
+
+        .media-box audio {
+            padding: 20px;
+            background: #111;
+        }
+
+        .media-box img {
+            width: 100%;
+            display: block;
+        }
+
+        .download-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .download-bar a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .download-bar a:hover { text-decoration: underline; }
+
+        @keyframes fadeDown {
+            from { opacity: 0; transform: translateY(-16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>YtRelay</h1>
+    <p>Media downloader via yt-dlp</p>
+</header>
+
+<div class="input-zone">
+    <div class="input-row">
+        <input id="urlInput" type="text" placeholder="https://youtube.com/watch?v=..." autocomplete="off" spellcheck="false">
+        <button id="fetchBtn" onclick="fetchMedia()">Fetch</button>
+    </div>
+    <div class="status" id="status"></div>
+</div>
+
+<div class="media-zone" id="mediaZone" style="display:none;"></div>
+
+<script>
+    const urlInput = document.getElementById('urlInput');
+    const fetchBtn = document.getElementById('fetchBtn');
+    const status = document.getElementById('status');
+    const mediaZone = document.getElementById('mediaZone');
+
+    urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') fetchMedia(); });
+
+    async function fetchMedia() {
+        const url = urlInput.value.trim();
+        if (!url) return;
+
+        fetchBtn.disabled = true;
+        mediaZone.style.display = 'none';
+        mediaZone.innerHTML = '';
+        status.className = 'status loading';
+        status.innerHTML = '<span class="spinner"></span>Fetching media...';
+
+        try {
+            const endpoint = `/download?url=${encodeURIComponent(url)}`;
+            const res = await fetch(endpoint);
+
+            if (!res.ok) {
+                const msg = await res.text().catch(() => res.statusText);
+                throw new Error(`${res.status} — ${msg}`);
+            }
+
+            const contentType = res.headers.get('Content-Type') || '';
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+
+            const disposition = res.headers.get('Content-Disposition') || '';
+            const filenameMatch = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            const filename = filenameMatch ? filenameMatch[1].replace(/['"]/g, '') : 'download';
+
+            let mediaEl;
+            if (contentType.startsWith('video/')) {
+                mediaEl = document.createElement('video');
+                mediaEl.controls = true;
+                mediaEl.autoplay = false;
+                mediaEl.src = objectUrl;
+            } else if (contentType.startsWith('audio/')) {
+                mediaEl = document.createElement('audio');
+                mediaEl.controls = true;
+                mediaEl.src = objectUrl;
+            } else if (contentType.startsWith('image/')) {
+                mediaEl = document.createElement('img');
+                mediaEl.src = objectUrl;
+                mediaEl.alt = filename;
+            } else {
+                // Unknown — offer download
+                mediaEl = null;
+            }
+
+            const box = document.createElement('div');
+            box.className = 'media-box';
+
+            if (mediaEl) box.appendChild(mediaEl);
+
+            const bar = document.createElement('div');
+            bar.className = 'download-bar';
+            bar.innerHTML = `<span>${contentType || 'unknown type'}</span><a href="${objectUrl}" download="${filename}">↓ Download</a>`;
+            box.appendChild(bar);
+
+            const label = document.createElement('div');
+            label.className = 'media-label';
+            label.textContent = '// output';
+
+            mediaZone.appendChild(label);
+            mediaZone.appendChild(box);
+            mediaZone.style.display = 'block';
+
+            status.className = 'status';
+            status.textContent = `Done — ${filename}`;
+        } catch (err) {
+            status.className = 'status error';
+            status.textContent = `Error: ${err.message}`;
+        } finally {
+            fetchBtn.disabled = false;
+        }
+    }
+</script>
+</body>
+</html>

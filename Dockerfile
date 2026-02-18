@@ -25,6 +25,7 @@ RUN mkdir -p /app/downloads
 COPY bun.lock package.json ./
 RUN bun install
 
-COPY src ./src
+COPY src src
+COPY ui ui
 
 CMD ["bun", "run", "start"]

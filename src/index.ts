@@ -1,21 +1,19 @@
 import {Hono} from 'hono';
-import {spawn} from 'node:child_process'; // Changed from exec to spawn
+import {spawn} from 'node:child_process';
 import {promises as fs} from 'node:fs';
 import * as path from 'node:path';
 import {authMiddleware} from './middleware';
-import {logger} from './logger'; // Import the logger
-import {initCache, getCachedFile, addFileToCache} from './cache'; // Import cache utilities
-
-const app = new Hono();
+import {logger} from './logger';
+import {initCache, getCachedFile, addFileToCache} from './cache';
+import {serveStatic} from 'hono/bun'
 
 initCache();
 
+const app = new Hono();
+
 app.use('*', authMiddleware);
 
-app.get('/', (c) => {
-    logger.info('Root endpoint hit.');
-    return c.text('Hello Hono!');
-});
+app.get('/', serveStatic({path: './ui/index.html'}))
 
 app.get('/download', async (c) => {
     const videoUrl = c.req.query('url');
