@@ -7,8 +7,6 @@ import {logger} from './logger';
 import {initCache, getCachedFile, addFileToCache} from './cache';
 import {serveStatic} from 'hono/bun'
 
-initCache();
-
 const app = new Hono();
 
 app.use('*', authMiddleware);
@@ -100,7 +98,6 @@ app.get('/download', async (c) => {
         const tempFilePath = path.join(downloadDir, tempDownloadedFile);
         logger.info('Temporary downloaded file found', {tempFilePath});
 
-        // --- Add to cache and serve ---
         const addedToCacheEntry = await addFileToCache(videoUrl, tempFilePath, tempDownloadedFile);
         filePath = addedToCacheEntry.filePath; // Now filePath points to the cached version
         downloadedFileName = addedToCacheEntry.originalFileName;
@@ -134,9 +131,18 @@ app.get('/download', async (c) => {
     }
 });
 
-Bun.serve({
-    fetch: app.fetch,
-    // 0 = disabled since downloads are long running
-    idleTimeout: 0,
-    port: 3000,
-});
+
+async function main() {
+    await initCache();
+
+    Bun.serve({
+        fetch: app.fetch,
+        // 0 = disabled since downloads are long running
+        idleTimeout: 0,
+        port: 3000,
+    });
+}
+
+main().then(() => {
+    logger.info("Started Server")
+})

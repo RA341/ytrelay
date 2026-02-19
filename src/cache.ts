@@ -1,8 +1,7 @@
-// src/cache.ts
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { logger } from './logger';
-import { createHash } from 'node:crypto'; // For hashing video URLs
+import { createHash } from 'node:crypto';
 
 interface CacheEntry {
   filePath: string;

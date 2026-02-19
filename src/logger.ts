@@ -1,4 +1,3 @@
-// src/logger.ts
 type LogLevel = 'INFO' | 'ERROR' | 'WARN' | 'DEBUG';
 
 function log(level: LogLevel, message: string, context?: Record<string, any>) {
